@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Engine/GameInstance.h"
 #include "interfaces/OnlineSessionInterface.h"
+//#include "OnlineSubsystem/OnlineSessionInterface.h"
 #include "BaseGameInstance.generated.h"
 
 /**
@@ -33,10 +34,14 @@ public:
 	TSharedPtr<FOnlineSessionSearch> searchSettings;
 
 	// Join an online session.
-	/*UFUNCTION(BlueprintCallable, Category = "Networking")
+	UFUNCTION(BlueprintCallable, Category = "Networking")
 	void JoinSession();
 	void JoinSessionCompleted(FName _sessionName, EOnJoinSessionCompleteResult::Type _joinResult);
 
-	bool TravelToSession();*/
+	FOnJoinSessionCompleteDelegate JoinSessionCompletedDelegate;
+	FDelegateHandle JoinSessionCompletedHandle;
+
+	// Travel to the joined session (returns true if successful).
+	bool TravelToSession();
 
 };

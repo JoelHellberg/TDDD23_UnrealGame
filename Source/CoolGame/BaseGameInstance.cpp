@@ -10,6 +10,9 @@
 UBaseGameInstance::UBaseGameInstance() {
 	// Instantiate the delegate for finding/searching for sessions (call the corresponding function upon completion).
 	SearchForSessionsCompletedDelegate = FOnFindSessionsCompleteDelegate::CreateUObject(this, &UBaseGameInstance::SearchForSessionsCompleted);
+
+	// Instatiate the delegate for joining sessions (call the corresponding function upon completion).
+	JoinSessionCompletedDelegate = FOnJoinSessionCompleteDelegate::CreateUObject(this, &UBaseGameInstance::JoinSessionCompleted);
 }
 
 void UBaseGameInstance::HostSession() {
@@ -56,11 +59,11 @@ void UBaseGameInstance::SearchForSessions() {
 
 			const ULocalPlayer* localPlayer = GetWorld()->GetFirstLocalPlayerFromController();
 			if (onlineSessionInterface->FindSessions(*localPlayer->GetPreferredUniqueNetId(), searchSettings.ToSharedRef())) {
-				GEngine->AddOnScreenDebugMessage(0, 30.0f, FColor::Cyan, FString::Printf(TEXT("Search Started.")));
+				GEngine->AddOnScreenDebugMessage(1, 30.0f, FColor::Cyan, FString::Printf(TEXT("Search Started.")));
 				UE_LOG(LogTemp, Warning, TEXT("Search Started."));
 			}
 			else {
-				GEngine->AddOnScreenDebugMessage(0, 30.0f, FColor::Cyan, FString::Printf(TEXT("Search failed to start.")));
+				GEngine->AddOnScreenDebugMessage(1, 30.0f, FColor::Cyan, FString::Printf(TEXT("Search failed to start.")));
 				UE_LOG(LogTemp, Warning, TEXT("Search failed to start."));
 			}
 		}
@@ -75,7 +78,7 @@ void UBaseGameInstance::SearchForSessionsCompleted(bool _searchCompleted) {
 			// Clear the handle and stop listening for the completion of the search operation.
 			onlineSessionInterface->ClearOnFindSessionsCompleteDelegate_Handle(SearchForSessionsCompletedHandle);
 
-			GEngine->AddOnScreenDebugMessage(0, 30.0f, FColor::Cyan, FString::Printf(TEXT("Search found %d sessions after completing search."), searchSettings->SearchResults.Num()));
+			GEngine->AddOnScreenDebugMessage(2, 30.0f, FColor::Cyan, FString::Printf(TEXT("Search found %d sessions after completing search."), searchSettings->SearchResults.Num()));
 			UE_LOG(LogTemp, Warning, TEXT("Search found %d sessions after completing search."), searchSettings->SearchResults.Num());
 
 			if (auto gameMode = Cast<ACoolGameTemplateGameMode>(GetWorld()->GetAuthGameMode()))
@@ -89,7 +92,42 @@ void UBaseGameInstance::SearchForSessionsCompleted(bool _searchCompleted) {
 	}
 }
 
-/*bool UBaseGameInstance::TravelToSession()
+void UBaseGameInstance::JoinSession() {
+	if (IOnlineSubsystem* onlineSubsystem = IOnlineSubsystem::Get())
+	{
+		if (IOnlineSessionPtr onlineSessionInterface = onlineSubsystem->GetSessionInterface())
+		{
+			if (searchSettings->SearchResults.Num() > 0) {
+				GEngine->AddOnScreenDebugMessage(3, 30.0f, FColor::Cyan, FString::Printf(TEXT("Joining Session")));
+				UE_LOG(LogTemp, Warning, TEXT("Joining Session."));
+				const ULocalPlayer* localPlayer = GetWorld()->GetFirstLocalPlayerFromController();
+				JoinSessionCompletedHandle = onlineSessionInterface->AddOnJoinSessionCompleteDelegate_Handle(JoinSessionCompletedDelegate);
+				onlineSessionInterface->JoinSession(*localPlayer->GetPreferredUniqueNetId(), NAME_GameSession, searchSettings->SearchResults[0]);
+			}
+		}
+	}
+}
+
+void UBaseGameInstance::JoinSessionCompleted(FName _sessionName, EOnJoinSessionCompleteResult::Type _joinResult) {
+	GEngine->AddOnScreenDebugMessage(4, 30.0f, FColor::Cyan, FString::Printf(TEXT("Join result: %d."), (int32)(_joinResult)));
+	UE_LOG(LogTemp, Warning, TEXT("Join result: %d."), (int32)(_joinResult));
+	if (IOnlineSubsystem* onlineSubsystem = IOnlineSubsystem::Get())
+	{
+		if (IOnlineSessionPtr onlineSessionInterface = onlineSubsystem->GetSessionInterface())
+		{
+			// Clear the handle and stop listening for the completion of the "Join" operation.
+			onlineSessionInterface->ClearOnJoinSessionCompleteDelegate_Handle(JoinSessionCompletedHandle);
+
+			// Attempt to join the session.
+			bool wasTravelSuccessful = TravelToSession();
+
+			GEngine->AddOnScreenDebugMessage(5, 30.0f, FColor::Cyan, FString::Printf(TEXT("Travel successful: %d"), wasTravelSuccessful));
+			UE_LOG(LogTemp, Warning, TEXT("Travel successful: %d."), wasTravelSuccessful);
+		}
+	}
+}
+
+bool UBaseGameInstance::TravelToSession()
 {
 	if (IOnlineSubsystem* onlineSubsystem = IOnlineSubsystem::Get()) 
 	{
@@ -97,12 +135,14 @@ void UBaseGameInstance::SearchForSessionsCompleted(bool _searchCompleted) {
 		{
 			FString connectionInfo;
 			if (onlineSessionInterface->GetResolvedConnectString(NAME_GameSession, connectionInfo)) {
+
 				// Travel the client to the server.
 				APlayerController* playerController = GetWorld()->GetFirstPlayerController();
 				playerController->ClientTravel(connectionInfo, TRAVEL_Absolute);
 				return true;
 			}
 			else {
+
 				// The connection information could not be obtained.
 				return false;
 			}
@@ -111,4 +151,4 @@ void UBaseGameInstance::SearchForSessionsCompleted(bool _searchCompleted) {
 
 	// The client was unable to travel.
 	return false;
-}*/
+}
