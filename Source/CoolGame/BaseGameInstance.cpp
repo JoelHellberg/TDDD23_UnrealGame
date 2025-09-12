@@ -15,8 +15,46 @@ UBaseGameInstance::UBaseGameInstance() {
 	JoinSessionCompletedDelegate = FOnJoinSessionCompleteDelegate::CreateUObject(this, &UBaseGameInstance::JoinSessionCompleted);
 }
 
+void UBaseGameInstance::Init()
+{
+	Super::Init();
+
+	IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get(TEXT("EOS"));
+	if (!OnlineSubsystem) return;
+
+	IOnlineIdentityPtr Identity = OnlineSubsystem->GetIdentityInterface();
+	if (!Identity.IsValid()) return;
+
+	Identity->OnLoginCompleteDelegates->AddUObject(this, &UBaseGameInstance::OnLoginComplete);
+
+	// DevAuth login istället för anonymous
+	FOnlineAccountCredentials DevCreds(TEXT("developer"), TEXT("localhost:8081"), TEXT("TDDD23-Developer"));
+	Identity->Login(0, DevCreds);
+}
+
+
+void UBaseGameInstance::OnLoginComplete(int32 LocalUserNum, bool bWasSuccessful, const FUniqueNetId& UserId, const FString& Error)
+{
+	if (bWasSuccessful)
+	{
+		bIsLoggedIn = true;
+		UE_LOG(LogTemp, Log, TEXT("Login Succeeded! LocalUserNum=%d UserId=%s"), LocalUserNum, *UserId.ToString());
+	}
+	else
+	{
+		bIsLoggedIn = false;
+		UE_LOG(LogTemp, Error, TEXT("Login Failed: %s"), *Error);
+	}
+
+	// Om du vill: ta bort delegaten om du inte behöver fler login events
+	// Identity->OnLoginCompleteDelegates->RemoveAll(this); // alternativt spara handle och ta bort
+}
+
+
+
 void UBaseGameInstance::HostSession() {
-	if (IOnlineSubsystem* onlineSubsystem = IOnlineSubsystem::Get()) {
+	if(bIsLoggedIn) {
+	if (IOnlineSubsystem* onlineSubsystem = IOnlineSubsystem::Get(TEXT("EOS"))) {
 		if (IOnlineSessionPtr onlineSessionInterface = onlineSubsystem->GetSessionInterface()) {
 			TSharedPtr<FOnlineSessionSettings> sessionSettings = MakeShareable(new FOnlineSessionSettings());
 			sessionSettings->bAllowInvites = true;
@@ -25,13 +63,32 @@ void UBaseGameInstance::HostSession() {
 			sessionSettings->bAllowJoinViaPresenceFriendsOnly = false;
 			sessionSettings->bIsDedicated = false;
 			sessionSettings->bUsesPresence = true;
-			sessionSettings->bIsLANMatch = true;
+			sessionSettings->bIsLANMatch = false;
 			sessionSettings->bShouldAdvertise = true;
 			sessionSettings->NumPrivateConnections = 0;
 			sessionSettings->NumPublicConnections = 2;
 
 			const ULocalPlayer* localPlayer = GetWorld()->GetFirstLocalPlayerFromController();
-			if (onlineSessionInterface->CreateSession(*localPlayer->GetPreferredUniqueNetId(), NAME_GameSession, *sessionSettings)) {
+			if (!localPlayer)
+			{
+				UE_LOG(LogTemp, Error, TEXT("No local player available!"));
+				return;
+			}
+
+			FUniqueNetIdRepl userIdRepl = localPlayer->GetPreferredUniqueNetId();
+			if (!userIdRepl.IsValid())
+			{
+				UE_LOG(LogTemp, Error, TEXT("UniqueNetId not ready yet"));
+				return;
+			}
+			// Få det som TSharedPtr<const FUniqueNetId>
+			TSharedPtr<const FUniqueNetId> userIdPtr = userIdRepl.GetUniqueNetId();
+			if (!userIdPtr.IsValid())
+			{
+				UE_LOG(LogTemp, Error, TEXT("Failed to convert UniqueNetId to TSharedPtr"));
+				return;
+			}
+			if (onlineSessionInterface->CreateSession(*userIdPtr, NAME_GameSession, *sessionSettings)) {
 				GEngine->AddOnScreenDebugMessage(0, 30.0f, FColor::Cyan, FString::Printf(TEXT("A session has been created!")));
 				UE_LOG(LogTemp, Warning, TEXT("A session has been created!"));
 			}
@@ -41,10 +98,14 @@ void UBaseGameInstance::HostSession() {
 			}
 		}
 	}
+	}
+	else {
+		UE_LOG(LogTemp, Log, TEXT("Can't host, user not yet initalized"));
+	}
 }
 
 void UBaseGameInstance::SearchForSessions() {
-	if (IOnlineSubsystem* onlineSubsystem = IOnlineSubsystem::Get())
+	if (IOnlineSubsystem* onlineSubsystem = IOnlineSubsystem::Get(TEXT("EOS")))
 	{
 		if (IOnlineSessionPtr onlineSessionInterface = onlineSubsystem->GetSessionInterface())
 		{
@@ -52,7 +113,7 @@ void UBaseGameInstance::SearchForSessions() {
 			SearchForSessionsCompletedHandle = onlineSessionInterface->AddOnFindSessionsCompleteDelegate_Handle(SearchForSessionsCompletedDelegate);
 
 			searchSettings = MakeShareable(new FOnlineSessionSearch());
-			searchSettings->bIsLanQuery = true;
+			searchSettings->bIsLanQuery = false;
 			searchSettings->MaxSearchResults = 5;
 			searchSettings->PingBucketSize = 30;
 			searchSettings->TimeoutInSeconds = 10.0f;
@@ -71,7 +132,7 @@ void UBaseGameInstance::SearchForSessions() {
 }
 
 void UBaseGameInstance::SearchForSessionsCompleted(bool _searchCompleted) {
-	if (IOnlineSubsystem* onlineSubsystem = IOnlineSubsystem::Get())
+	if (IOnlineSubsystem* onlineSubsystem = IOnlineSubsystem::Get(TEXT("EOS")))
 	{
 		if (IOnlineSessionPtr onlineSessionInterface = onlineSubsystem->GetSessionInterface())
 		{
@@ -93,7 +154,7 @@ void UBaseGameInstance::SearchForSessionsCompleted(bool _searchCompleted) {
 }
 
 void UBaseGameInstance::JoinSession() {
-	if (IOnlineSubsystem* onlineSubsystem = IOnlineSubsystem::Get())
+	if (IOnlineSubsystem* onlineSubsystem = IOnlineSubsystem::Get(TEXT("EOS")))
 	{
 		if (IOnlineSessionPtr onlineSessionInterface = onlineSubsystem->GetSessionInterface())
 		{
@@ -111,7 +172,7 @@ void UBaseGameInstance::JoinSession() {
 void UBaseGameInstance::JoinSessionCompleted(FName _sessionName, EOnJoinSessionCompleteResult::Type _joinResult) {
 	GEngine->AddOnScreenDebugMessage(4, 30.0f, FColor::Cyan, FString::Printf(TEXT("Join result: %d."), (int32)(_joinResult)));
 	UE_LOG(LogTemp, Warning, TEXT("Join result: %d."), (int32)(_joinResult));
-	if (IOnlineSubsystem* onlineSubsystem = IOnlineSubsystem::Get())
+	if (IOnlineSubsystem* onlineSubsystem = IOnlineSubsystem::Get(TEXT("EOS")))
 	{
 		if (IOnlineSessionPtr onlineSessionInterface = onlineSubsystem->GetSessionInterface())
 		{
@@ -129,7 +190,7 @@ void UBaseGameInstance::JoinSessionCompleted(FName _sessionName, EOnJoinSessionC
 
 bool UBaseGameInstance::TravelToSession()
 {
-	if (IOnlineSubsystem* onlineSubsystem = IOnlineSubsystem::Get()) 
+	if (IOnlineSubsystem* onlineSubsystem = IOnlineSubsystem::Get(TEXT("EOS")))
 	{
 		if (IOnlineSessionPtr onlineSessionInterface = onlineSubsystem->GetSessionInterface()) 
 		{
