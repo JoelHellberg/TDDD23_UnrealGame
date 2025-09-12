@@ -5,6 +5,7 @@
 #include "CoolGameTemplateGameMode.h"
 #include "OnlineSubsystem.h"
 #include "OnlineSessionSettings.h"
+#define SETTING_MAPNAME TEXT("MAPNAME")
 //#include "interfaces/OnlineSessionInterface.h"
 
 UBaseGameInstance::UBaseGameInstance() {
@@ -38,12 +39,14 @@ void UBaseGameInstance::OnLoginComplete(int32 LocalUserNum, bool bWasSuccessful,
 	if (bWasSuccessful)
 	{
 		bIsLoggedIn = true;
+		GEngine->AddOnScreenDebugMessage(0, 30.0f, FColor::Cyan, FString::Printf(TEXT("Login Succeeded! LocalUserNum=%d UserId=%s"), LocalUserNum, *UserId.ToString()));
 		UE_LOG(LogTemp, Log, TEXT("Login Succeeded! LocalUserNum=%d UserId=%s"), LocalUserNum, *UserId.ToString());
 	}
 	else
 	{
 		bIsLoggedIn = false;
 		UE_LOG(LogTemp, Error, TEXT("Login Failed: %s"), *Error);
+		GEngine->AddOnScreenDebugMessage(0, 30.0f, FColor::Cyan, FString::Printf(TEXT("Login Failed: %s"), *Error));
 	}
 
 	// Om du vill: ta bort delegaten om du inte behöver fler login events
@@ -67,6 +70,8 @@ void UBaseGameInstance::HostSession() {
 			sessionSettings->bShouldAdvertise = true;
 			sessionSettings->NumPrivateConnections = 0;
 			sessionSettings->NumPublicConnections = 2;
+			sessionSettings->Set(SETTING_MAPNAME, FString("Lvl_FirstPerson"), EOnlineDataAdvertisementType::ViaOnlineService);
+			sessionSettings->Set(TEXT("PRESENCESEARCH"), true, EOnlineDataAdvertisementType::ViaOnlineService);
 
 			const ULocalPlayer* localPlayer = GetWorld()->GetFirstLocalPlayerFromController();
 			if (!localPlayer)
@@ -79,6 +84,7 @@ void UBaseGameInstance::HostSession() {
 			if (!userIdRepl.IsValid())
 			{
 				UE_LOG(LogTemp, Error, TEXT("UniqueNetId not ready yet"));
+				GEngine->AddOnScreenDebugMessage(0, 30.0f, FColor::Cyan, FString::Printf(TEXT("UniqueNetId not ready yet")));
 				return;
 			}
 			// Få det som TSharedPtr<const FUniqueNetId>
@@ -91,6 +97,9 @@ void UBaseGameInstance::HostSession() {
 			if (onlineSessionInterface->CreateSession(*userIdPtr, NAME_GameSession, *sessionSettings)) {
 				GEngine->AddOnScreenDebugMessage(0, 30.0f, FColor::Cyan, FString::Printf(TEXT("A session has been created!")));
 				UE_LOG(LogTemp, Warning, TEXT("A session has been created!"));
+				OnCreateSessionCompleteDelegateHandle = onlineSessionInterface->AddOnCreateSessionCompleteDelegate_Handle(
+					FOnCreateSessionCompleteDelegate::CreateUObject(this, &UBaseGameInstance::OnCreateSessionComplete)
+				);
 			}
 			else {
 				GEngine->AddOnScreenDebugMessage(0, 30.0f, FColor::Cyan, FString::Printf(TEXT("A session has failed to be created!")));
@@ -101,6 +110,34 @@ void UBaseGameInstance::HostSession() {
 	}
 	else {
 		UE_LOG(LogTemp, Log, TEXT("Can't host, user not yet initalized"));
+	}
+}
+
+void UBaseGameInstance::OnCreateSessionComplete(FName SessionName, bool bWasSuccessful)
+{
+	IOnlineSubsystem* OnlineSub = IOnlineSubsystem::Get();
+	if (!OnlineSub) return;
+
+	IOnlineSessionPtr Sessions = OnlineSub->GetSessionInterface();
+	if (Sessions.IsValid())
+	{
+		Sessions->ClearOnCreateSessionCompleteDelegate_Handle(OnCreateSessionCompleteDelegateHandle);
+	}
+
+	if (bWasSuccessful)
+	{
+		UE_LOG(LogTemp, Log, TEXT("Session created successfully! Redirecting to map..."));
+
+		// Now you can safely travel with ?listen
+		UWorld* World = GetWorld();
+		if (World)
+		{
+			World->ServerTravel("/Game/FirstPerson/Lvl_FirstPerson?listen");
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("Failed to create session!"));
 	}
 }
 
@@ -154,6 +191,10 @@ void UBaseGameInstance::SearchForSessionsCompleted(bool _searchCompleted) {
 }
 
 void UBaseGameInstance::JoinSession() {
+	if (!bIsLoggedIn) {
+		UE_LOG(LogTemp, Warning, TEXT("Can't join, user not yet logged in"));
+		return;
+	}
 	if (IOnlineSubsystem* onlineSubsystem = IOnlineSubsystem::Get(TEXT("EOS")))
 	{
 		if (IOnlineSessionPtr onlineSessionInterface = onlineSubsystem->GetSessionInterface())
@@ -190,17 +231,30 @@ void UBaseGameInstance::JoinSessionCompleted(FName _sessionName, EOnJoinSessionC
 
 bool UBaseGameInstance::TravelToSession()
 {
+	UE_LOG(LogTemp, Warning, TEXT("Starting travel"));
+	GEngine->AddOnScreenDebugMessage(6, 30.0f, FColor::Cyan, FString::Printf(TEXT("Starting travel")));
 	if (IOnlineSubsystem* onlineSubsystem = IOnlineSubsystem::Get(TEXT("EOS")))
 	{
+		UE_LOG(LogTemp, Warning, TEXT("Travel 1st if successfull"));
+		GEngine->AddOnScreenDebugMessage(7, 30.0f, FColor::Cyan, FString::Printf(TEXT("Travel 1st if successfull")));
 		if (IOnlineSessionPtr onlineSessionInterface = onlineSubsystem->GetSessionInterface()) 
 		{
+			UE_LOG(LogTemp, Warning, TEXT("Travel 2nd if successfull"));
+			GEngine->AddOnScreenDebugMessage(8, 30.0f, FColor::Cyan, FString::Printf(TEXT("Travel 2nd if successfull")));
 			FString connectionInfo;
 			if (onlineSessionInterface->GetResolvedConnectString(NAME_GameSession, connectionInfo)) {
+				UE_LOG(LogTemp, Warning, TEXT("Travel 3rd if successfull"));
+				GEngine->AddOnScreenDebugMessage(9, 30.0f, FColor::Cyan, FString::Printf(TEXT("Travel 3rd if successfull")));
+				UE_LOG(LogTemp, Warning, TEXT("Connection Info: %s"), *connectionInfo);
+				GEngine->AddOnScreenDebugMessage(10, 30.0f, FColor::Cyan, FString::Printf(TEXT("Connection Info: %s"), *connectionInfo));
 
 				// Travel the client to the server.
-				APlayerController* playerController = GetWorld()->GetFirstPlayerController();
+				if (APlayerController* playerController = GetWorld()->GetFirstPlayerController()) {
+					UE_LOG(LogTemp, Warning, TEXT("Travel 4th if successfull"));
+					GEngine->AddOnScreenDebugMessage(11, 30.0f, FColor::Cyan, FString::Printf(TEXT("Travel 4th if successfull")));
 				playerController->ClientTravel(connectionInfo, TRAVEL_Absolute);
 				return true;
+				}
 			}
 			else {
 

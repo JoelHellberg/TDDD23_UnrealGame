@@ -16,13 +16,13 @@ UCLASS()
 class COOLGAME_API UBaseGameInstance : public UGameInstance
 {
 	GENERATED_BODY()
-	UBaseGameInstance();
 
 protected:
 	virtual void Init() override;
 
 
 public:
+	UBaseGameInstance();
 	// callback för login
 	void OnLoginComplete(int32 LocalUserNum, bool bWasSuccessful, const FUniqueNetId& UserId, const FString& Error);
 	bool bIsLoggedIn = false;
@@ -30,6 +30,9 @@ public:
 	// Host an online session.
 	UFUNCTION(BlueprintCallable, Category = "Networking")
 	void HostSession();
+	void OnCreateSessionComplete(FName SessionName, bool bWasSuccessful);
+	FDelegateHandle OnCreateSessionCompleteDelegateHandle;
+
 
 	// Search for an online session.
 	UFUNCTION(BlueprintCallable, Category = "Networking")
