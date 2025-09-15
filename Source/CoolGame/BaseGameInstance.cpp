@@ -277,7 +277,6 @@ void UBaseGameInstance::ChangeLevelForAll(FName MapName)
 			GM->bUseSeamlessTravel = true; // Aktivera nu
 		}
 
-		//World->ServerTravel(MapName.ToString() + TEXT("?listen"));
-		World->ServerTravel("/Game/FirstPerson/Lvl_FirstPerson?listen");
+		World->ServerTravel(MapName.ToString() + TEXT("?listen"));
 	}
 }
