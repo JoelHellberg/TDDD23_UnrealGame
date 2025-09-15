@@ -54,4 +54,6 @@ public:
 	// Travel to the joined session (returns true if successful).
 	bool TravelToSession();
 
+	UFUNCTION(BlueprintCallable)
+	void ChangeLevelForAll(FName MapName);
 };

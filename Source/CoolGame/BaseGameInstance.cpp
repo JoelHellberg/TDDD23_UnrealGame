@@ -132,7 +132,7 @@ void UBaseGameInstance::OnCreateSessionComplete(FName SessionName, bool bWasSucc
 		UWorld* World = GetWorld();
 		if (World)
 		{
-			World->ServerTravel("/Game/FirstPerson/Lvl_FirstPerson?listen");
+			World->ServerTravel("/Game/FirstPerson/Lvl_OnlineMenu?listen");
 		}
 	}
 	else
@@ -266,4 +266,18 @@ bool UBaseGameInstance::TravelToSession()
 
 	// The client was unable to travel.
 	return false;
+}
+
+void UBaseGameInstance::ChangeLevelForAll(FName MapName)
+{
+	if (UWorld* World = GetWorld())
+	{
+		if (AGameModeBase* GM = World->GetAuthGameMode())
+		{
+			GM->bUseSeamlessTravel = true; // Aktivera nu
+		}
+
+		//World->ServerTravel(MapName.ToString() + TEXT("?listen"));
+		World->ServerTravel("/Game/FirstPerson/Lvl_FirstPerson?listen");
+	}
 }
