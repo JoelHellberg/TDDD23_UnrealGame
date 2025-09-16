@@ -18,4 +18,10 @@ public:
 	// Display session data in menus/widgets (such as the Session List).
 	UFUNCTION(BlueprintImplementableEvent)
 	void DisplaySessionInfo(const FString& _sessionId);
+	virtual void PostLogin(APlayerController* NewPlayer) override;
+	virtual void Logout(AController* Exiting) override;
+
+protected:
+	UPROPERTY(BlueprintReadOnly)
+	int32 ConnectedPlayersCount = 0;
 };
