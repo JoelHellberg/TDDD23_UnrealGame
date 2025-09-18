@@ -280,3 +280,64 @@ void UBaseGameInstance::ChangeLevelForAll(FName MapName)
 		World->ServerTravel(MapName.ToString() + TEXT("?listen"));
 	}
 }
+
+void UBaseGameInstance::LeaveSession()
+{
+	if (IOnlineSubsystem* OnlineSub = IOnlineSubsystem::Get())
+	{
+		if (IOnlineSessionPtr Sessions = OnlineSub->GetSessionInterface())
+		{
+			const ULocalPlayer* LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController();
+			if (!LocalPlayer)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("No local player found for leaving session."));
+				return;
+			}
+
+			// Remove delegate just in case
+			Sessions->ClearOnDestroySessionCompleteDelegate_Handle(LeaveSessionCompleteHandle);
+
+			// Bind the delegate to handle session destruction completion
+			LeaveSessionCompleteHandle = Sessions->AddOnDestroySessionCompleteDelegate_Handle(
+				FOnDestroySessionCompleteDelegate::CreateUObject(this, &UBaseGameInstance::OnLeaveSessionComplete)
+			);
+
+			if (!Sessions->DestroySession(NAME_GameSession))
+			{
+				UE_LOG(LogTemp, Warning, TEXT("Failed to initiate session destruction."));
+			}
+		}
+	}
+}
+
+void UBaseGameInstance::OnLeaveSessionComplete(FName SessionName, bool bWasSuccessful)
+{
+	IOnlineSubsystem* OnlineSub = IOnlineSubsystem::Get();
+	if (!OnlineSub) return;
+
+	IOnlineSessionPtr Sessions = OnlineSub->GetSessionInterface();
+	if (Sessions.IsValid())
+	{
+		Sessions->ClearOnDestroySessionCompleteDelegate_Handle(LeaveSessionCompleteHandle);
+	}
+
+	if (bWasSuccessful)
+	{
+		UE_LOG(LogTemp, Log, TEXT("Successfully left session: %s"), *SessionName.ToString());
+
+		// Travel back to main menu or default map
+		UWorld* World = GetWorld();
+		if (World)
+		{
+			APlayerController* PC = World->GetFirstPlayerController();
+			if (PC)
+			{
+				PC->ClientTravel("/Game/Maps/MainMenu", TRAVEL_Absolute);
+			}
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("Failed to leave session: %s"), *SessionName.ToString());
+	}
+}
