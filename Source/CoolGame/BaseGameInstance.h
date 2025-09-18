@@ -19,7 +19,7 @@ class COOLGAME_API UBaseGameInstance : public UGameInstance
 
 protected:
 	virtual void Init() override;
-
+	void OnLeaveSessionComplete(FName SessionName, bool bWasSuccessful);
 
 public:
 	UBaseGameInstance();
@@ -53,6 +53,11 @@ public:
 
 	// Travel to the joined session (returns true if successful).
 	bool TravelToSession();
+
+	UFUNCTION(BlueprintCallable, Category = "Online|Session")
+	void LeaveSession();
+
+	FDelegateHandle LeaveSessionCompleteHandle;
 
 	UFUNCTION(BlueprintCallable)
 	void ChangeLevelForAll(FName MapName);
