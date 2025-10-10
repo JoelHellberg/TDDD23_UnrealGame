@@ -19,8 +19,10 @@ protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-	void InitializeProxyServer();
-	void SetLLMInstructions(const FString& LLMInstructions);
+
+private:
+	void* ReadPipe;
+	void* WritePipe;
 	bool IsProxyServerRunning();
 	FProcHandle ProxyProcHandle;
 	FTimerHandle PollTimerHandle;
@@ -31,7 +33,9 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FOnLLMResponse OnLLMResponse;
 	UFUNCTION(BlueprintCallable, Category = "LLM")
-	void InitializeLLMConnection(const FString& LLMInstructions);
+	void InitializeProxyServer();
+	UFUNCTION(BlueprintCallable, Category = "LLM")
+	void SetLLMInstructions(const FString& LLMInstructions);
 	DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLLMReady);
 
 	UPROPERTY(BlueprintAssignable)
@@ -39,11 +43,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "LLM")
 
 	void SendPromptToLLM(const FString& Prompt);
-	// Delegate fired when LLM is ready
-	UFUNCTION()
-	void PollLLMReady(const FString& LLMInstructions);
-
-
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 };
