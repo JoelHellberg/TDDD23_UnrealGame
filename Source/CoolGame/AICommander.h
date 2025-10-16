@@ -4,6 +4,10 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "HttpModule.h"
+#include "Interfaces/IHttpRequest.h"
+#include "Interfaces/IHttpResponse.h"
+#include "Http.h"
 #include "AICommander.generated.h"
 
 UCLASS()
@@ -26,6 +30,7 @@ private:
 	bool IsProxyServerRunning();
 	FProcHandle ProxyProcHandle;
 	FTimerHandle PollTimerHandle;
+	TArray<TSharedPtr<IHttpRequest, ESPMode::ThreadSafe>> ActiveRequests;
 
 public:	
 

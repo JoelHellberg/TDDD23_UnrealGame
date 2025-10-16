@@ -42,7 +42,7 @@ def send_to_llm():
 
     # Send prompt to Gemini
     response = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-2.5-flash-lite",
         contents=prompt,
         config=genai.types.GenerateContentConfig(
             system_instruction=LLMInstructions
@@ -58,4 +58,6 @@ def send_to_llm():
 if __name__ == "__main__":
     #app.run(port=5000, debug=True)
     threading.Thread(target=wait_until_server_ready, daemon=True).start()
-    app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
+    app.run(host='127.0.0.1', port=5000, threaded=True)
+
+    # app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)

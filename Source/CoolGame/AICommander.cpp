@@ -2,10 +2,6 @@
 
 #include "AICommander.h"
 #include "HAL/PlatformProcess.h"
-#include "HttpModule.h"
-#include "Interfaces/IHttpRequest.h"
-#include "Interfaces/IHttpResponse.h"
-#include "Http.h"
 #include "Json.h"
 #include "JsonUtilities.h"
 
@@ -55,8 +51,8 @@ void AAICommander::InitializeProxyServer()
         &ProcessID,             // OutProcessID - capture this
         0,                      // PriorityModifier
         *ProjectDir,            // OptionalWorkingDirectory - set to project dir
-        WritePipe,              // StdOutPipe - child writes here
-        ReadPipe                // StdInPipe - we would write here (not used)
+        nullptr,              // StdOutPipe - child writes here
+        nullptr                // StdInPipe - we would write here (not used)
     );
 
     if (!ProxyProcHandle.IsValid())
@@ -175,74 +171,73 @@ void AAICommander::SetLLMInstructions(const FString& Instructions)
 
 void AAICommander::SendPromptToLLM(const FString& Prompt)
 {
-    UE_LOG(LogTemp, Warning, TEXT("LLMProcess: [AAICommander] Sending prompt to LLM: %s"), *Prompt);
+    if (!IsValid(this)) return;
 
-    // Step 1: Quick check if proxy server seems alive
-    if (!IsProxyServerRunning())
-    {
-        UE_LOG(LogTemp, Error, TEXT("LLMProcess: [AAICommander] Proxy server not running — cannot send prompt!"));
-        return;
-    }
-
-    // Step 2: Create the HTTP request
-    TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
+    // Create request (local shared ptr)
+    TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
     Request->SetURL(TEXT("http://127.0.0.1:5000/send_to_llm"));
     Request->SetVerb(TEXT("POST"));
     Request->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
+    Request->SetTimeout(30.0f);
 
-    // Create proper JSON using Unreal's JSON library
+    // Build JSON...
     TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject());
     JsonObject->SetStringField(TEXT("prompt"), Prompt);
-
     FString OutputString;
     TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
     FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer);
-
     Request->SetContentAsString(OutputString);
 
-    UE_LOG(LogTemp, Warning, TEXT("LLMProcess: [AAICommander] JSON Payload: %s"), *OutputString);
+    // Keep it alive
+    ActiveRequests.Add(Request);
 
-    // Step 3: Bind a lambda to handle response
+    // Weak pointer to this to avoid using a destroyed UObject
+    TWeakObjectPtr<AAICommander> WeakThis(this);
+
+    // Bind; note we capture Request (shared ptr) by value to keep it alive until callback fires
     Request->OnProcessRequestComplete().BindLambda(
-        [this](FHttpRequestPtr Req, FHttpResponsePtr Response, bool bWasSuccessful)
+        [WeakThis, Request](FHttpRequestPtr Req, FHttpResponsePtr Response, bool bWasSuccessful)
         {
-            if (bWasSuccessful && Response.IsValid())
-            {
-                const FString RawResp = Response->GetContentAsString();
-                UE_LOG(LogTemp, Log, TEXT("LLMProcess: [AAICommander] Raw LLM Response: %s"), *RawResp);
-
-                // Parse the JSON response
-                TSharedPtr<FJsonObject> JsonObject;
-                TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(RawResp);
-
-                if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid())
+            // Always marshal to GameThread for any UObject or delegate access
+            AsyncTask(ENamedThreads::GameThread, [WeakThis, Request, Response, bWasSuccessful]()
                 {
-                    // Extract "llm_response" field
-                    FString LLMResponse = JsonObject->GetStringField(TEXT("llm_response"));
-                    UE_LOG(LogTemp, Log, TEXT("LLMProcess: [AAICommander] Parsed LLM Response: %s"), *LLMResponse);
+                    // Check actor still exists
+                    if (!WeakThis.IsValid())
+                    {
+                        // Actor gone: nothing to do (Request will be released when ActiveRequests cleaned up)
+                        return;
+                    }
 
-                    // Broadcast the actual response text, not the raw JSON
-                    OnLLMResponse.Broadcast(LLMResponse);
-                }
-                else
-                {
-                    UE_LOG(LogTemp, Error, TEXT("LLMProcess: [AAICommander] Failed to parse JSON response"));
-                    OnLLMResponse.Broadcast(TEXT("Error: Failed to parse response"));
-                }
-            }
-            else
-            {
-                FString StatusMsg = Response.IsValid()
-                    ? FString::Printf(TEXT("HTTP Status: %d, Message: %s"), Response->GetResponseCode(), *Response->GetContentAsString())
-                    : TEXT("No valid response received.");
+                    AAICommander* Self = WeakThis.Get();
 
-                UE_LOG(LogTemp, Error, TEXT("LLMProcess: [AAICommander] Failed to contact LLM. %s"), *StatusMsg);
-                OnLLMResponse.Broadcast(TEXT("Error: Failed to contact LLM"));
-            }
+                    // Remove request from list (modify container on game thread)
+                    Self->ActiveRequests.Remove(Request);
+
+                    if (bWasSuccessful && Response.IsValid() && EHttpResponseCodes::IsOk(Response->GetResponseCode()))
+                    {
+                        const FString RawResp = Response->GetContentAsString();
+                        // parse JSON safely...
+                        TSharedPtr<FJsonObject> JsonObj;
+                        TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(RawResp);
+                        if (FJsonSerializer::Deserialize(Reader, JsonObj) && JsonObj.IsValid())
+                        {
+                            FString LLMResponse = JsonObj->GetStringField(TEXT("llm_response"));
+                            // Safe to broadcast on game thread
+                            Self->OnLLMResponse.Broadcast(LLMResponse);
+                        }
+                        else
+                        {
+                            Self->OnLLMResponse.Broadcast(TEXT("Error: Failed to parse response"));
+                        }
+                    }
+                    else
+                    {
+                        Self->OnLLMResponse.Broadcast(TEXT("Error: Failed to contact LLM"));
+                    }
+                });
         });
 
-    // Step 4: Actually send the HTTP request
-    UE_LOG(LogTemp, Warning, TEXT("[AAICommander] Sending POST request to http://127.0.0.1:5000/send_to_llm ..."));
+    // Fire it off
     Request->ProcessRequest();
 }
 
